@@ -164,6 +164,72 @@ def get_popular_posts(stock, post_listing):
                 print(f"Error {e.args[0]}")
     return results
 
+def get_stock_info(stock):
+    ''' Retrive real-time information on the most popular stock using Apha Vantage API
+
+    Parameters
+    ----------
+    stock: string of stock symbol
+
+    Returns
+    -------
+    dict
+        dictionary that contain up-to-date stock information
+    '''
+    connection = sqlite3.connect("wsb_synthesizer.sqlite")
+    with connection:
+        cursor = connection.cursor()
+        cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='stocks'")
+        if cursor.fetchone()[0] ==1:
+            print("\nLoading stock information from cache ...\n")
+            select_query = "SELECT * FROM stocks WHERE symbol = ?"
+            result = cursor.execute(select_query, (stock,)).fetchall()
+            return result
+        else:
+            secret = secrets.alpha_secret
+            base_url = "https://www.alphavantage.co/query"
+            params = {"function":"TIME_SERIES_DAILY_ADJUSTED", "symbol": stock, "apikey":secret}
+
+            response = requests.get(base_url, params=params)
+            data = response.json()
+            date = data['Meta Data']['3. Last Refreshed']
+            daily_adjusted = data['Time Series (Daily)'][date]
+            open_p = daily_adjusted['1. open']
+            high_p = daily_adjusted['2. high']
+            low_p = daily_adjusted['3. low']
+            close_p = daily_adjusted['4. close']
+            dividend = daily_adjusted['7. dividend amount']
+
+            params = {"function":"OVERVIEW", "symbol": stock, "apikey":secret}
+            response = requests.get(base_url, params=params)
+            data = response.json()
+            company_desc = data['Description']
+            result = {'sym_date': stock + "_" + date, 'symbol':stock, 'date':date, 'open':open_p, 'high':high_p, 'low': low_p, 'close': close_p,
+            'dividend': dividend, 'description': company_desc}
+
+            # Saving results to database for future caching
+            create_query =\
+                '''
+                CREATE TABLE IF NOT EXISTS stocks(sym_date TEXT PRIMARY KEY, symbol TEXT, date TEXT, open REAL,
+                high REAL, low REAL, close REAL, dividend REAL, description TEXT);
+                '''
+            insert_query =\
+                '''
+                INSERT OR IGNORE INTO stocks VALUES(:sym_date, :symbol, :date, :open, :high, :low, :close, :dividend, :description);
+                '''
+
+            try:
+                connection = sqlite3.connect("wsb_synthesizer.sqlite")
+                with connection:
+                    cursor = connection.cursor()
+                    cursor.execute(create_query)
+                    cursor.execute(insert_query, result)
+                    print('Writing stock information to database...\n')
+            except sqlite3.Error as e:
+                print(f"Error {e.args[0]}")
+
+            return result
+
 if __name__ == "__main__":
 
     base_url = 'https://oauth.reddit.com'
@@ -205,4 +271,6 @@ if __name__ == "__main__":
         print("\n-------------------------------------------------------------------------")
         print('\ntype `info` for more stock info, or type flairs: `YOLO`, `DD`, `TECH` for other r/wsb posts this week.')
         print('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
-        res = input('`exit` to exit\n')
+        res = input('Casing does not matter, `exit` to exit\n')
+        if res.lower() == 'info':
+            print(get_stock_info(POPULAR_STOCK))
