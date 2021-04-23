@@ -8,9 +8,20 @@ import numpy as np
 import seaborn as sns
 import re
 import sqlite3
-
+import datetime
 
 def get_reddit_token():
+    ''' Get Oauth2 token for authentication on reddit
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    token
+        token that authenticates the application for 1 hour
+    '''
     client_auth = requests.auth.HTTPBasicAuth(secrets.reddit_app_id, secrets.reddit_secret)
     headers = secrets.reddit_header
     post_data = secrets.post_data
@@ -173,20 +184,25 @@ if __name__ == "__main__":
         print('Welcome to r/wsb sythensizer!')
         res = input('Press Enter to see today\'s most talked about stock on r/wallstreetbets!')
         wsb_posts = get_cached_posts()
+        t_start = datetime.datetime.now().timestamp()
         if wsb_posts is None:
             wsb_posts = get_posts(headers)
             POPULAR_STOCK = get_popular_stock(wsb_posts)
             relevant_posts = get_popular_posts(POPULAR_STOCK, wsb_posts)
             count = 1
             for post in relevant_posts:
-                print(f"[{count}] {post['title'][:50]}")
+                print(f"[{count}] {post['title']}")
                 count +=1
+            t_end = datetime.datetime.now().timestamp()
+            print("\nload time without caching: ", (t_end - t_start) * 1000, "ms\n")
         else:
             count = 1
             for post in wsb_posts:
                 print(f"[{count}] {post[3]}")
                 count += 1
+            t_end = datetime.datetime.now().timestamp()
+            print("load time with caching: ", (t_end - t_start) * 1000, "ms\n")
         print("\n-------------------------------------------------------------------------")
         print('\ntype `info` for more stock info, or type flairs: `YOLO`, `DD`, `TECH` for other r/wsb posts this week.')
-        print('`exit` to exit')
-        res = input('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
+        print('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
+        res = input('`exit` to exit\n')
