@@ -134,7 +134,7 @@ def get_popular_posts(stock, post_listing):
     Returns
     -------
     list
-        list of dictionaries that contain all the relevant information regarding the
+        list of dictionaries that contain all the relevant information regarding the stock
     '''
     results = []
     count = 0
@@ -202,7 +202,7 @@ def get_stock_info(stock):
 
             response = requests.get(base_url, params=params)
             data = response.json()
-            date = data['Meta Data']['3. Last Refreshed']
+            date = data['Meta Data']['3. Last Refreshed'][:10]
             daily_adjusted = data['Time Series (Daily)'][date]
             open_p = daily_adjusted['1. open']
             high_p = daily_adjusted['2. high']
@@ -267,7 +267,7 @@ def show_stock_info(stock_info, stock):
     df['reportedEPS'] = df.reportedEPS.astype('float')
 
     f, ax = plt.subplots(1, figsize=(7, 4))
-    ax.set_title("Annual Earnings of GME")
+    ax.set_title("Annual Earnings of " + stock)
     plt.xticks(rotation=90)
 
     sns.barplot(data=df, x= df.fiscalDateEnding, y=df.reportedEPS, palette = sns.color_palette("PRGn", 10))
@@ -286,7 +286,41 @@ def show_stock_info(stock_info, stock):
         print(f"Open: {stock_info['open']}, High: {stock_info['high']}, Low: {stock_info['low']}, Close: {stock_info['close']}, Dividend: {stock_info['dividend']}")
         print(f"\n{stock_info['description']}\n")
 
+def search_stock(stock, flair):
+    ''' Display reddit posts on r/wsb that relates to the most popular stock of the day
+
+    Parameters
+    ----------
+    stock: string that represents the most popular stock
+    flair: string that specifies the type of post determined by subreddit flaire
+
+    Returns
+    -------
+    list
+        list of dictionaries that contain information about search results from reddit
+    '''
+    url = "https://oauth.reddit.com/r/wallstreetbets/search"
+    params = {'t': 'week', 'limit': 100, 'q': stock, 'f': flair}
+    res = requests.get(url, headers=headers, params=params)
+    print(res.status_code)
+    print('Searching from oauth.reddit.com ...\n')
+    data = res.json()
+
+    results = []
+    for post in data['data']['children']:
+        if post['data'].get('link_flair_text') == flair:
+            result = {'url': "https://reddit.com" + post['data']['permalink'], 'stock': stock,
+            'upvote': post['data'].get('ups'), 'title': post['data']['title'],
+            'post_text': post['data'].get('selftext'), 'flair': post['data'].get('link_flair_text')
+            }
+            results.append(result)
+    return results
+
+
+
 if __name__ == "__main__":
+
+    search_query = {'dd': 'DD', 'yolo': 'YOLO', 'tech':'Technical Analysis'}
 
     base_url = 'https://oauth.reddit.com'
     token = get_reddit_token()
@@ -302,9 +336,10 @@ if __name__ == "__main__":
         print(f"Error {e.args[0]}")
 
     res = ""
-    while res.lower() != 'exit':
-        print('Welcome to r/wsb sythensizer!')
-        res = input('Press Enter to see today\'s most talked about stock on r/wallstreetbets!\n')
+    print('Welcome to r/wsb sythensizer!')
+    res = input('Press Enter to see today\'s most talked about stock on r/wallstreetbets!\n')
+
+    while str(res).lower() != 'exit':
         wsb_posts = get_cached_posts()
         t_start = datetime.datetime.now().timestamp()
         if wsb_posts is None:
@@ -322,14 +357,45 @@ if __name__ == "__main__":
 
             t_end = datetime.datetime.now().timestamp()
             print("load time with caching: ", (t_end - t_start) * 1000, "ms\n")
-        print("\n-------------------------------------------------------------------------")
-        print('\ntype `info` for more stock info, or type flairs: `YOLO`, `DD`, `TECH` for other r/wsb posts this week.')
-        print('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
-        print('or type the number of the reddit post you would like to view (opens a webpage)')
-        res = input('Casing does not matter, `exit` to exit\n\n')
-        if res.isnumeric():
-            print(f"Redirecting to reddit post.\n")
-            webbrowser.open(relevant_posts[int(res)]['url'])
-        if res.lower() == 'info':
-            stock_info = get_stock_info(POPULAR_STOCK)
-            show_stock_info(stock_info, POPULAR_STOCK)
+
+        while res.lower() != 'exit':
+            print("\n-------------------------------------------------------------------------")
+            print('\ntype `info` for more stock info, or type flairs: `YOLO`, `DD`, `TECH` for other r/wsb posts this week.')
+            print('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
+            print('or type the number of the reddit post you would like to view (opens a webpage)')
+            res = input('`reload` to reload list, `exit` to exit\n\n')
+            if res.isnumeric():
+                print(f"Redirecting to reddit post.\n")
+                if int(res) >= len(relevant_posts):
+                    print("Please enter a number that is within the range of the displayed results!")
+                    continue
+                webbrowser.open(relevant_posts[int(res)]['url'])
+            else:
+                if res.lower() == 'info':
+                    stock_info = get_stock_info(POPULAR_STOCK)
+                    show_stock_info(stock_info, POPULAR_STOCK)
+                elif res.lower() == 'reload':
+                    break
+                elif res.lower() in search_query.keys():
+                    print(f"Searching for {res} r/wsb posts...\n")
+                    searched_posts = search_stock(POPULAR_STOCK, search_query[str(res)])
+                    for idx, post in enumerate(searched_posts):
+                        print(f"[{idx}] {post['title']}")
+
+                    while str(res).lower() != 'back' and str(res).lower() != 'exit':
+                        print('\nEnter the number of post you would like to view')
+                        res = input('`back` to return to previous step, `exit` to exit\n')
+                        if res.isnumeric():
+                            if int(res) >= len(searched_posts):
+                                print("\nPlease enter a number that is within the range of the displayed results!")
+                                continue
+                            webbrowser.open(searched_posts[int(res)]['url'])
+                        else:
+                            print("\nPlease enter a valid number, or enter `back` to return to previous step")
+                            continue
+                elif res.lower() == 'exit':
+                    break
+                else:
+                    print("\nInvalid input, please try again.\n")
+
+    print('\nEnd of program, bye-bye investor, godspeed!')
