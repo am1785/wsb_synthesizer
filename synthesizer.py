@@ -9,6 +9,8 @@ import seaborn as sns
 import re
 import sqlite3
 import datetime
+import webbrowser
+from matplotlib import pyplot as plt
 
 def get_reddit_token():
     ''' Get Oauth2 token for authentication on reddit
@@ -135,22 +137,24 @@ def get_popular_posts(stock, post_listing):
         list of dictionaries that contain all the relevant information regarding the
     '''
     results = []
+    count = 0
     for post in post_listing['data']['children']:
         if stock in post['data']['title'] or stock in post['data']['selftext']:
             result = {'url': "https://reddit.com" + post['data']['permalink'], 'stock': stock,
             'upvote': post['data'].get('ups'), 'title': post['data']['title'],
-            'post_text': post['data'].get('selftext'), 'flair': post['data'].get('link_flair_text')}
-
+            'post_text': post['data'].get('selftext'), 'flair': post['data'].get('link_flair_text'),
+            'rank': count}
+            count += 1
             results.append(result)
             # Writing to database
             create_query =\
                 '''
                 CREATE TABLE IF NOT EXISTS wsb_posts(url TEXT PRIMARY KEY, stock TEXT, upvote INT,
-                title TEXT, post_text TEXT, flair TEXT);
+                title TEXT, post_text TEXT, flair TEXT, rank INT);
                 '''
             insert_query =\
                 '''
-                INSERT OR IGNORE INTO wsb_posts VALUES(:url, :stock, :upvote, :title, :post_text, :flair);
+                INSERT OR IGNORE INTO wsb_posts VALUES(:url, :stock, :upvote, :title, :post_text, :flair, :rank);
                 '''
 
             try:
@@ -173,14 +177,20 @@ def get_stock_info(stock):
 
     Returns
     -------
-    dict
+    list (if recrod found in db)
+        list of sets that contain up-to-date stock information
+
+    dict (if record not found in db)
         dictionary that contain up-to-date stock information
     '''
+    today = datetime.datetime.today().strftime('%Y-%m-%d')
+    sym_date = stock + '_' + str(today)
+
     connection = sqlite3.connect("wsb_synthesizer.sqlite")
     with connection:
         cursor = connection.cursor()
-        cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='stocks'")
-        if cursor.fetchone()[0] ==1:
+        cursor.execute("SELECT * FROM stocks WHERE sym_date = ?", (sym_date,))
+        if cursor.fetchone():
             print("\nLoading stock information from cache ...\n")
             select_query = "SELECT * FROM stocks WHERE symbol = ?"
             result = cursor.execute(select_query, (stock,)).fetchall()
@@ -230,6 +240,52 @@ def get_stock_info(stock):
 
             return result
 
+
+def show_stock_info(stock_info, stock):
+    ''' Display market information, company description, and annual EPS graph
+    on the most popular stock using Seaborn
+
+    Parameters
+    ----------
+    stock_info: dictionary or list of sets containing information on a stock
+    stock: string indicating the most popular stock
+
+    Returns
+    -------
+    None
+    '''
+
+    secret = secrets.alpha_secret
+    base_url = "https://www.alphavantage.co/query"
+    params = {"function":"EARNINGS", "symbol": stock, "apikey":secret}
+
+    response = requests.get(base_url, params=params)
+    data = response.json()
+
+    df = pd.DataFrame(data['annualEarnings'][:10])
+    df = df.drop(0, axis=0)
+    df['reportedEPS'] = df.reportedEPS.astype('float')
+
+    f, ax = plt.subplots(1, figsize=(7, 4))
+    ax.set_title("Annual Earnings of GME")
+    plt.xticks(rotation=90)
+
+    sns.barplot(data=df, x= df.fiscalDateEnding, y=df.reportedEPS, palette = sns.color_palette("PRGn", 10))
+    plt.tight_layout()
+    plt.show()
+
+    # if stock info is cached
+    # :sym_date, :symbol, :date, :open, :high, :low, :close, :dividend, :description
+    if isinstance(stock_info, list):
+        print(f"[{stock_info[-1][1]}] {stock_info[-1][2]} info:")
+        print(f"Open: {stock_info[-1][3]}, High: {stock_info[-1][4]}, Low: {stock_info[-1][5]}, Close: {stock_info[-1][6]}, Dividend: {stock_info[-1][7]}")
+        print(f"\n{stock_info[-1][-1]}")
+
+    elif isinstance(stock_info, dict):
+        print(f"[{stock_info['symbol']}] {stock_info['date']} info:")
+        print(f"Open: {stock_info['open']}, High: {stock_info['high']}, Low: {stock_info['low']}, Close: {stock_info['close']}, Dividend: {stock_info['dividend']}")
+        print(f"\n{stock_info['description']}\n")
+
 if __name__ == "__main__":
 
     base_url = 'https://oauth.reddit.com'
@@ -248,29 +304,32 @@ if __name__ == "__main__":
     res = ""
     while res.lower() != 'exit':
         print('Welcome to r/wsb sythensizer!')
-        res = input('Press Enter to see today\'s most talked about stock on r/wallstreetbets!')
+        res = input('Press Enter to see today\'s most talked about stock on r/wallstreetbets!\n')
         wsb_posts = get_cached_posts()
         t_start = datetime.datetime.now().timestamp()
         if wsb_posts is None:
             wsb_posts = get_posts(headers)
             POPULAR_STOCK = get_popular_stock(wsb_posts)
             relevant_posts = get_popular_posts(POPULAR_STOCK, wsb_posts)
-            count = 1
             for post in relevant_posts:
-                print(f"[{count}] {post['title']}")
-                count +=1
+                print(f"[{post['rank']}] {post['title']}")
+
             t_end = datetime.datetime.now().timestamp()
             print("\nload time without caching: ", (t_end - t_start) * 1000, "ms\n")
         else:
-            count = 1
             for post in wsb_posts:
-                print(f"[{count}] {post[3]}")
-                count += 1
+                print(f"[{post[-1]}] {post[3]}")
+
             t_end = datetime.datetime.now().timestamp()
             print("load time with caching: ", (t_end - t_start) * 1000, "ms\n")
         print("\n-------------------------------------------------------------------------")
         print('\ntype `info` for more stock info, or type flairs: `YOLO`, `DD`, `TECH` for other r/wsb posts this week.')
         print('YOLO = nonserious posts, DD = due diligence, TECH = technical analysis')
-        res = input('Casing does not matter, `exit` to exit\n')
+        print('or type the number of the reddit post you would like to view (opens a webpage)')
+        res = input('Casing does not matter, `exit` to exit\n\n')
+        if res.isnumeric():
+            print(f"Redirecting to reddit post.\n")
+            webbrowser.open(relevant_posts[int(res)]['url'])
         if res.lower() == 'info':
-            print(get_stock_info(POPULAR_STOCK))
+            stock_info = get_stock_info(POPULAR_STOCK)
+            show_stock_info(stock_info, POPULAR_STOCK)
