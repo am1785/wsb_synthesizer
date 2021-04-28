@@ -23,7 +23,7 @@ Display the most recent market information on the stock of interest
 List non-serious reddit posts on r/wsb in regards to the most popular stock
 
 ### dd
-List r/wsb posts flaired by Due Diligence.
+List r/wsb posts flaired by Due Diligence
 
 ### tech
 List r/wsb posts flaired by Technical Analysis
