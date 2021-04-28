@@ -10,9 +10,7 @@ Guides for setting up Oauth2 for Reddit: https://github.com/reddit-archive/reddi
 
 https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
 
-Aterwards, pass in your credentials into the secrets.py file and launch synthesizer.py.
-
-You should see status code: 200 if everything is correctly set up.
+Launch `synthesizer.py`, you should see status code: 200 if everything is correctly set up.
 
 ## Required Python Packages
 re, sqlite3, pandas, numpy, seaborn, matplotlib
