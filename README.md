@@ -3,6 +3,7 @@ An informative command line tool that helps with synthesizing the most popular s
 
 ## Prerequisites
 Have a reddit account, create a reddit applicaiton, and use your credentials to set up Oauth2.
+
 Guides for setting up Oauth2 for Reddit: https://github.com/reddit-archive/reddit/wiki/OAuth2
 
 https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
